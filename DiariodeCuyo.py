@@ -25,12 +25,14 @@ def busqueda1(Palabra):
         texto_noticia = soup.find('div', class_='entry-body')
 
         texto1 = titulo_noticia.get_text()
-        texto1 = ' '.join(texto1.replace('"', '').replace('/', '-').replace(':', '').split())
+        texto1 = ' '.join(texto1.replace('"', '').replace('/', '-').replace(':', '').replace('|', '').split())
         texto2 = texto_noticia.get_text()
         if i == 0:
             texto2 = ' '.join(texto2.split())
         else:
             texto2 = ' '.join(texto2.split()[:-i-1])
+
+        texto2=' '.join(texto2.replace('"', '').replace('/', '-').replace(':', '').replace('|', '').split())
 
 
         #FECHA NOTICIA
@@ -40,6 +42,7 @@ def busqueda1(Palabra):
         return Palabra, etiquetas ,fecha , texto1, texto2
 
     def noticia(Palabra):
+        Diario='Diario de Cuyo'
         import requests
         from bs4 import BeautifulSoup
         from datetime import datetime
@@ -62,9 +65,9 @@ def busqueda1(Palabra):
                 Palabra, etiquetas, fecha, texto1, texto2 = DiariodeCuyo(url, Palabra)
 
                 fecha_datetime = datetime.strptime(fecha, '%Y/%m/%d')
-                if fecha_datetime >= datetime(2024, 1, 1):
+                if fecha_datetime >= datetime(2024, 4, 19):
 
-                    data_line = ' | '.join([Palabra, etiquetas, fecha, texto1, texto2, url])
+                    data_line = ' | '.join([Palabra, etiquetas, fecha, texto1, texto2, Diario, url])
                     data_lines.append(data_line)
 
                     continue  
@@ -86,6 +89,7 @@ def busqueda1(Palabra):
     fecha_list = []
     titulo_list = []
     contenido_list = []
+    diario_list = []
     url_list = []
 
 
@@ -96,7 +100,8 @@ def busqueda1(Palabra):
         fecha_list.append(elements[2].strip())
         titulo_list.append(elements[3].strip())
         contenido_list.append(elements[4].strip())
-        url_list.append(elements[5].strip())
+        diario_list.append(elements[5].strip())
+        url_list.append(elements[6].strip())
 
 
     df = pd.DataFrame({
@@ -105,27 +110,54 @@ def busqueda1(Palabra):
         'Fecha': fecha_list,
         'Título': titulo_list,
         'Contenido': contenido_list,
+        'Diario': diario_list,
         'URL': url_list
     })
 
-    # import mysql.connector
+    import mysql.connector
 
-    # # Conexión a MySQL
-    # conn_mysql = mysql.connector.connect(
-    #     host='localhost',
-    #     user='root',
-    #     password='*******',
-    #     database='noticias'
-    # )
-    # cursor_mysql = conn_mysql.cursor()
+    # Conexión a MySQL
+    conn_mysql = mysql.connector.connect(
+        host='localhost',
+        user='root',
+        password=' ',
+        database='noticias'
+    )
 
-    # for index, row in df.iterrows():
-    #     cursor_mysql.execute('''
-    #         INSERT INTO noticia_values (Palabra, Etiquetas, Fecha, Título, Contenido, URL)
-    #         VALUES (%s, %s, %s, %s, %s, %s)
-    #     ''', (row['Palabra'], row['Etiquetas'], row['Fecha'], row['Título'], row['Contenido'], row['URL']))
-        
-    #     df.at[index, 'migrado'] = 1
+    cursor_mysql = conn_mysql.cursor()
 
-    # conn_mysql.commit()
-    # conn_mysql.close()
+    try:
+        for index, row in df.iterrows():
+            # Define the SQL INSERT statement with placeholders
+            sql_insert = '''
+                INSERT INTO noticias_new (Palabra, Etiquetas, Fecha, Título, Contenido, Diario, URL)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            '''
+
+            # Extract values from the DataFrame row
+            values = (
+                row['Palabra'],
+                row['Etiquetas'],
+                row['Fecha'],
+                row['Título'],
+                row['Contenido'],
+                row['Diario'],
+                row['URL']
+            )
+
+            cursor_mysql.execute(sql_insert, values)
+
+            # Optionally, update a flag in the DataFrame to indicate successful migration
+            df.at[index, 'migrado'] = 1
+
+        # Commit the transaction to persist changes in the database
+        conn_mysql.commit()
+
+    except Exception as e:
+        print(f"Error occurred: {e}")
+        conn_mysql.rollback()  # Roll back changes if an error occurs
+
+    finally:
+        # Close the cursor and connection
+        cursor_mysql.close()
+        conn_mysql.close()
